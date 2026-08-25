@@ -211,7 +211,6 @@ def check_overdue_tasks() -> dict:
         today = date.today()
 
         # Find tasks that are overdue AND don't already have an overdue notification
-        from app.models.project import Project
 
         overdue_tasks = (
             db.execute(

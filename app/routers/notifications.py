@@ -26,7 +26,7 @@ async def list_notifications(
 ) -> list[NotificationOut]:
     query = select(Notification).where(Notification.user_id == current_user.id)
     if unread_only:
-        query = query.where(Notification.delivered == False)
+        query = query.where(Notification.delivered.is_(False))
     query = query.order_by(Notification.created_at.desc()).limit(limit)
 
     result = await db.execute(query)

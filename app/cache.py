@@ -12,12 +12,15 @@ Invalidation:
 
 import hashlib
 import json
+import logging
 import uuid
 from typing import Any
 
 from redis.asyncio import Redis
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 _KEY_PREFIX = "tasks:user"
 
@@ -35,10 +38,6 @@ def make_cache_key(user_id: uuid.UUID, filters: dict[str, Any]) -> str:
 def _user_pattern(user_id: uuid.UUID) -> str:
     return f"{_KEY_PREFIX}:{user_id}:*"
 
-
-import logging
-
-logger = logging.getLogger(__name__)
 
 async def get_cached(redis: Redis, key: str) -> str | None:
     """Return cached value or None on miss/error."""

@@ -9,8 +9,9 @@ Create Date: 2024-01-01 00:00:00.000000
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "20bec4e4cdd4"
@@ -125,7 +126,9 @@ def upgrade() -> None:
     # Must drop the server_default first — PostgreSQL cannot auto-cast a text
     # default ('todo') to an enum type during ALTER COLUMN TYPE.
     op.execute("ALTER TABLE tasks ALTER COLUMN status DROP DEFAULT")
-    op.execute("ALTER TABLE tasks ALTER COLUMN status TYPE taskstatus USING status::taskstatus")
+    op.execute(
+        "ALTER TABLE tasks ALTER COLUMN status TYPE taskstatus USING status::taskstatus"
+    )
     op.execute("ALTER TABLE tasks ALTER COLUMN status SET DEFAULT 'todo'")
 
     # ── notifications ──────────────────────────────────────────────────────────
@@ -160,11 +163,15 @@ def upgrade() -> None:
     op.create_index("ix_notifications_user_id", "notifications", ["user_id"])
 
     # Cast type column to use the enum type
-    op.execute("ALTER TABLE notifications ALTER COLUMN type TYPE notificationtype USING type::notificationtype")
+    op.execute(
+        "ALTER TABLE notifications ALTER COLUMN type TYPE notificationtype USING type::notificationtype"
+    )
 
     # Unique constraint for idempotency: one notification per (task, user, type)
     op.create_unique_constraint(
-        "uq_notifications_task_user_type", "notifications", ["task_id", "user_id", "type"]
+        "uq_notifications_task_user_type",
+        "notifications",
+        ["task_id", "user_id", "type"],
     )
 
 

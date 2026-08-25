@@ -25,7 +25,9 @@ class TaskMutationResult:
     new_assignee_id: uuid.UUID | None
 
 
-async def _validate_assignee_exists(db: AsyncSession, assignee_id: uuid.UUID | None) -> None:
+async def _validate_assignee_exists(
+    db: AsyncSession, assignee_id: uuid.UUID | None
+) -> None:
     if assignee_id is not None:
         from app.models.user import User
 

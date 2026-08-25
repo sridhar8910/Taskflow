@@ -7,6 +7,7 @@ Revises: 20bec4e4cdd4
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "7f31d0f52a9b"
@@ -32,7 +33,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_constraint("uq_notifications_task_type_event", "notifications", type_="unique")
+    op.drop_constraint(
+        "uq_notifications_task_type_event", "notifications", type_="unique"
+    )
     op.create_unique_constraint(
         "uq_notifications_task_type", "notifications", ["task_id", "type"]
     )

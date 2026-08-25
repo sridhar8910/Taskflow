@@ -235,9 +235,9 @@ async def test_cache_invalidated_for_both_assignees_on_reassignment(
     assert update_resp.status_code == 200
 
     # Both cache keys must now be gone
-    assert await fake_redis.get(key_a) is None, (
-        "Assignee A cache not invalidated after reassignment"
-    )
-    assert await fake_redis.get(key_b) is None, (
-        "Assignee B cache not invalidated after reassignment"
-    )
+    assert (
+        await fake_redis.get(key_a) is None
+    ), "Assignee A cache not invalidated after reassignment"
+    assert (
+        await fake_redis.get(key_b) is None
+    ), "Assignee B cache not invalidated after reassignment"

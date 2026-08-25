@@ -161,7 +161,9 @@ async def test_distinct_reassignment_events_are_not_collapsed():
         events.add(event_key)
         return fake_notif, True
 
-    with patch.object(worker_module, "_get_or_create_notification", side_effect=fake_get_or_create):
+    with patch.object(
+        worker_module, "_get_or_create_notification", side_effect=fake_get_or_create
+    ):
         first = worker_module.send_reassignment_notification(
             str(task_id), None, str(assignee_a), "event-1"
         )

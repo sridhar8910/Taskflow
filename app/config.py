@@ -32,12 +32,13 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_security(self) -> "Settings":
-        if self.app_env.lower() in ("production", "prod"):
-            if "change-me" in self.secret_key or len(self.secret_key) < 32:
-                raise ValueError(
-                    "CRITICAL SECURITY RISK: Production environment requires a secure, random SECRET_KEY "
-                    "(minimum 32 characters). Set the SECRET_KEY environment variable."
-                )
+        if self.app_env.lower() in ("production", "prod") and (
+            "change-me" in self.secret_key or len(self.secret_key) < 32
+        ):
+            raise ValueError(
+                "CRITICAL SECURITY RISK: Production environment requires a secure, random SECRET_KEY "
+                "(minimum 32 characters). Set the SECRET_KEY environment variable."
+            )
         return self
 
 

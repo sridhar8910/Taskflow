@@ -31,6 +31,6 @@ class NotificationOut(BaseModel):
                 data["read"] = read_val
             else:
                 # Attach dynamically if ORM model instance
-                setattr(data, "is_read", read_val)
-                setattr(data, "read", read_val)
+                data.is_read = read_val
+                data.read = read_val
         return data

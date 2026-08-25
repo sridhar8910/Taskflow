@@ -1,7 +1,8 @@
 import os
+
 from fastapi import Depends, FastAPI
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.dependencies import get_current_user
@@ -58,9 +59,7 @@ async def root():
     return {"status": "ok", "env": settings.app_env, "docs": "/docs"}
 
 
-
 # ── Protected stub used in auth tests ─────────────────────────────────────────
 @app.get("/me", tags=["auth"])
 async def me(current_user: User = Depends(get_current_user)) -> dict:
     return {"id": str(current_user.id), "email": current_user.email}
-
