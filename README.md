@@ -206,9 +206,28 @@ Celery is configured with Redis as both broker and result backend.
 
 ## Deployment
 
-**Path taken: documented Render deployment. No live URL is provided.**
+**Path taken: documented Render deployment and VM script. No live URL is provided.**
 
-This decision was deliberate — free-tier Render instances cold-start slowly and the assignment explicitly accepts a documented path as equivalent. The `render.yaml` in this repo is fully configured and ready to deploy.
+This decision was deliberate — free-tier Render instances cold-start slowly and the assignment explicitly accepts a documented path as equivalent. We have provided two deployment paths:
+
+1. **`render.yaml`**: Fully configured and ready to deploy to Render.
+2. **`scripts/deploy.sh`**: A complete bash script for deploying the stack to a clean Ubuntu VM.
+
+### Deploy to a VM (Alternative Path)
+
+If you prefer to host this on a standard Linux VM (e.g., DigitalOcean Droplet, AWS EC2, or a local server), you can use the provided deployment script:
+
+```bash
+# On your local machine or via SSH to the VM:
+bash scripts/deploy.sh
+```
+
+The script will automatically:
+1. Install Docker and Docker Compose
+2. Clone the repository
+3. Generate a secure `SECRET_KEY` and setup `.env`
+4. Spin up the full stack via `docker compose up`
+5. Run the database migrations automatically
 
 ### Deploy to Render
 
