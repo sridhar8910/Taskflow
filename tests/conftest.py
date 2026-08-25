@@ -86,24 +86,22 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
     to ensure proper asyncpg connection state management. This prevents
     "another operation is in progress" errors.
     """
-    async with test_engine.connect() as conn:
-        # Start a transaction on the connection itself
-        async with conn.begin():
-            # For PostgreSQL, use a nested transaction (savepoint) for easy rollback
-            if _IS_POSTGRES:
-                async with conn.begin_nested():
-                    async with AsyncSession(
-                        bind=conn, expire_on_commit=False
-                    ) as session:
-                        yield session
-                        # Rollback the savepoint
-                        await conn.rollback()
-            else:
-                # SQLite: just use the outer transaction
-                async with AsyncSession(bind=conn, expire_on_commit=False) as session:
-                    yield session
-                    # Rollback the outer transaction
-                    await conn.rollback()
+    async with test_engine.connect() as conn, conn.begin():
+        # For PostgreSQL, use a nested transaction (savepoint) for easy rollback
+        if _IS_POSTGRES:
+            async with (
+                conn.begin_nested(),
+                AsyncSession(bind=conn, expire_on_commit=False) as session,
+            ):
+                yield session
+                # Rollback the savepoint
+                await conn.rollback()
+        else:
+            # SQLite: just use the outer transaction
+            async with AsyncSession(bind=conn, expire_on_commit=False) as session:
+                yield session
+                # Rollback the outer transaction
+                await conn.rollback()
 
 
 # ── Redis setup ──────────────────────────────────────────────────────────
