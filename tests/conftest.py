@@ -17,6 +17,7 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool, StaticPool
 
 from app.database import Base, get_db
 from app.dependencies import get_redis
@@ -29,11 +30,19 @@ _IS_POSTGRES = TEST_DATABASE_URL.startswith("postgresql")
 
 _connect_args = {"check_same_thread": False} if not _IS_POSTGRES else {}
 
-test_engine = create_async_engine(
-    TEST_DATABASE_URL,
-    connect_args=_connect_args,
-    echo=False,
-)
+if _IS_POSTGRES:
+    test_engine = create_async_engine(
+        TEST_DATABASE_URL,
+        poolclass=NullPool,
+        echo=False,
+    )
+else:
+    test_engine = create_async_engine(
+        TEST_DATABASE_URL,
+        connect_args=_connect_args,
+        poolclass=StaticPool,
+        echo=False,
+    )
 
 TestSessionLocal = async_sessionmaker(
     test_engine,
