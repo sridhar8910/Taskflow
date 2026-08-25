@@ -22,7 +22,7 @@ from app.database import Base, get_db
 from app.dependencies import get_redis
 from app.main import app
 
-# ── Database setup ────────────────────────────────────────────────────────────
+# ── Database setup ─────────────────────────────────────────────────────────
 
 TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 _IS_POSTGRES = TEST_DATABASE_URL.startswith("postgresql")
@@ -80,21 +80,31 @@ def patch_celery_delay():
 async def db_session() -> AsyncGenerator[AsyncSession, None]:
     """
     Yields a transactional session rolled back after each test.
-    Works with both SQLite (savepoint not supported) and PostgreSQL.
+    Works with both SQLite and PostgreSQL.
+    
+    Uses SQLAlchemy's transaction context managers instead of manual begin()
+    to ensure proper asyncpg connection state management. This prevents
+    "another operation is in progress" errors.
     """
     async with test_engine.connect() as conn:
-        if _IS_POSTGRES:
-            await conn.begin()
-            await conn.begin_nested()  # savepoint for rollback
-        else:
-            await conn.begin()
+        # Start a transaction on the connection itself
+        async with conn.begin():
+            # For PostgreSQL, use a nested transaction (savepoint) for easy rollback
+            if _IS_POSTGRES:
+                async with conn.begin_nested():
+                    async with AsyncSession(bind=conn, expire_on_commit=False) as session:
+                        yield session
+                        # Rollback the savepoint
+                        await conn.rollback()
+            else:
+                # SQLite: just use the outer transaction
+                async with AsyncSession(bind=conn, expire_on_commit=False) as session:
+                    yield session
+                    # Rollback the outer transaction
+                    await conn.rollback()
 
-        async with AsyncSession(bind=conn, expire_on_commit=False) as session:
-            yield session
-            await session.rollback()
 
-
-# ── Redis setup ───────────────────────────────────────────────────────────────
+# ── Redis setup ──────────────────────────────────────────────────────────
 
 
 @pytest.fixture
@@ -105,7 +115,7 @@ def fake_redis():
     return fakeredis.aioredis.FakeRedis(decode_responses=True)
 
 
-# ── HTTP client ───────────────────────────────────────────────────────────────
+# ── HTTP client ──────────────────────────────────────────────────────────
 
 
 @pytest_asyncio.fixture
