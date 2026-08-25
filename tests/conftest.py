@@ -81,7 +81,7 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
     """
     Yields a transactional session rolled back after each test.
     Works with both SQLite and PostgreSQL.
-    
+
     Uses SQLAlchemy's transaction context managers instead of manual begin()
     to ensure proper asyncpg connection state management. This prevents
     "another operation is in progress" errors.
@@ -92,7 +92,9 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
             # For PostgreSQL, use a nested transaction (savepoint) for easy rollback
             if _IS_POSTGRES:
                 async with conn.begin_nested():
-                    async with AsyncSession(bind=conn, expire_on_commit=False) as session:
+                    async with AsyncSession(
+                        bind=conn, expire_on_commit=False
+                    ) as session:
                         yield session
                         # Rollback the savepoint
                         await conn.rollback()
