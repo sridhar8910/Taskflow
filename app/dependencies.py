@@ -12,7 +12,7 @@ from app.database import get_db
 from app.models.user import User
 from app.services.auth import decode_token
 
-_bearer = HTTPBearer()
+_bearer = HTTPBearer(auto_error=False)
 
 # Module-level Redis client — connection pool is reused across requests.
 # In tests this is overridden via app.dependency_overrides.
@@ -31,7 +31,7 @@ def get_redis() -> Redis:
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(_bearer),
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
     db: AsyncSession = Depends(get_db),
 ) -> User:
     """
@@ -43,6 +43,8 @@ async def get_current_user(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    if credentials is None:
+        raise credentials_exception
     try:
         user_id: uuid.UUID = decode_token(credentials.credentials)
     except (JWTError, ValueError):
