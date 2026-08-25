@@ -188,7 +188,14 @@ async function apiRequest(endpoint, options = {}) {
     }
 
     const text = await res.text();
-    const data = text ? JSON.parse(text) : {};
+    let data = {};
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch (e) {
+      if (!res.ok) {
+        throw new Error(`Server Error (${res.status}): Please check backend logs or database setup.`);
+      }
+    }
 
     if (!res.ok) {
       const msg = typeof data.detail === 'string' 
