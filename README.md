@@ -352,3 +352,4 @@ This is the honest version. The assignment says to be candid, so here it is.
 - The `GET /tasks` top-level endpoint returns only tasks in projects owned by the authenticated user. Tasks the user is only _assigned to_ (but doesn't own the project) are not included. This matches the authorization model — a user can only see their own projects.
 - Notification "delivery" is simulated via log lines and DB rows. The assignment explicitly permits this.
 - No live deployment URL is provided. The `render.yaml` and these instructions are the deployment deliverable, as the assignment allows.
+# Taskflow
