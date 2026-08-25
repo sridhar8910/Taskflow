@@ -4,6 +4,7 @@ FROM python:3.11-slim AS builder
 WORKDIR /build
 
 # Install build dependencies
+# hadolint ignore=DL3008
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
@@ -14,8 +15,9 @@ COPY pyproject.toml .
 # Create a minimal stub package so pip can install dependencies
 # (the actual source is bind-mounted at runtime, so only deps need to be here)
 RUN mkdir -p app && touch app/__init__.py
-RUN pip install --upgrade pip setuptools wheel && \
-    pip install --prefix=/install ".[dev]"
+# hadolint ignore=DL3013
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir --prefix=/install ".[dev]"
 
 # ── Stage 2: runtime ──────────────────────────────────────────────────────────
 FROM python:3.11-slim AS runtime
@@ -23,6 +25,7 @@ FROM python:3.11-slim AS runtime
 WORKDIR /app
 
 # Runtime system deps (libpq for asyncpg/psycopg2)
+# hadolint ignore=DL3008
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
