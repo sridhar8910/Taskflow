@@ -167,11 +167,11 @@ def upgrade() -> None:
         "ALTER TABLE notifications ALTER COLUMN type TYPE notificationtype USING type::notificationtype"
     )
 
-    # Unique constraint for idempotency: one notification per (task, user, type)
+    # Unique constraint for idempotency: one notification per (task, type)
     op.create_unique_constraint(
-        "uq_notifications_task_user_type",
+        "uq_notifications_task_type",
         "notifications",
-        ["task_id", "user_id", "type"],
+        ["task_id", "type"],
     )
 
 

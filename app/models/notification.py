@@ -26,7 +26,7 @@ class Notification(Base):
     __tablename__ = "notifications"
     __table_args__ = (
         UniqueConstraint(
-            "task_id", "user_id", "type", name="uq_notifications_task_user_type"
+            "task_id", "type", "event_key", name="uq_notifications_task_type_event"
         ),
     )
 
