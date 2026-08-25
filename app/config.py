@@ -39,6 +39,14 @@ class Settings(BaseSettings):
                 "CRITICAL SECURITY RISK: Production environment requires a secure, random SECRET_KEY "
                 "(minimum 32 characters). Set the SECRET_KEY environment variable."
             )
+            
+        # Automatically fix standard postgresql:// URLs for asyncpg/psycopg2 drivers
+        if self.database_url and self.database_url.startswith("postgresql://"):
+            self.database_url = self.database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            
+        if self.sync_database_url and self.sync_database_url.startswith("postgresql://"):
+            self.sync_database_url = self.sync_database_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+            
         return self
 
 
