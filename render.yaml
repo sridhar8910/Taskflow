@@ -1,0 +1,142 @@
+##############################################################################
+# TaskFlow — Render deployment configuration
+#
+# Deployment path: documented (no live URL provided).
+# Steps to deploy:
+#   1. Fork / push this repo to GitHub.
+#   2. Go to https://dashboard.render.com → New → Blueprint.
+#   3. Connect the GitHub repo — Render auto-reads this file.
+#   4. Set the SECRET_KEY environment variable in the Render dashboard
+#      (Infrastructure → Environment → Add Secret).
+#   5. Click "Apply" — Render provisions Postgres, Redis, and all three
+#      services automatically.
+#
+# See README.md for full deployment instructions.
+##############################################################################
+
+services:
+  # ── FastAPI web service ────────────────────────────────────────────────────
+  - type: web
+    name: taskflow-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -e ".[dev]" && alembic upgrade head
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: taskflow-db
+          property: connectionString
+      - key: SYNC_DATABASE_URL
+        fromDatabase:
+          name: taskflow-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: taskflow-redis
+          type: redis
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          name: taskflow-redis
+          type: redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          name: taskflow-redis
+          type: redis
+          property: connectionString
+      - key: SECRET_KEY
+        sync: false  # Set this manually in the Render dashboard
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "60"
+      - key: CACHE_TTL_SECONDS
+        value: "60"
+      - key: APP_ENV
+        value: production
+
+  # ── Celery worker ──────────────────────────────────────────────────────────
+  - type: worker
+    name: taskflow-worker
+    runtime: python
+    plan: free
+    buildCommand: pip install -e ".[dev]"
+    startCommand: celery -A app.worker.celery_app worker --loglevel=info --concurrency=2
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: taskflow-db
+          property: connectionString
+      - key: SYNC_DATABASE_URL
+        fromDatabase:
+          name: taskflow-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: taskflow-redis
+          type: redis
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          name: taskflow-redis
+          type: redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          name: taskflow-redis
+          type: redis
+          property: connectionString
+      - key: SECRET_KEY
+        sync: false
+      - key: APP_ENV
+        value: production
+
+  # ── Celery Beat scheduler ──────────────────────────────────────────────────
+  - type: worker
+    name: taskflow-beat
+    runtime: python
+    plan: free
+    buildCommand: pip install -e ".[dev]"
+    startCommand: >
+      celery -A app.worker.celery_app beat
+      --loglevel=info
+      --scheduler celery.beat:PersistentScheduler
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: taskflow-db
+          property: connectionString
+      - key: SYNC_DATABASE_URL
+        fromDatabase:
+          name: taskflow-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: taskflow-redis
+          type: redis
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          name: taskflow-redis
+          type: redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          name: taskflow-redis
+          type: redis
+          property: connectionString
+      - key: SECRET_KEY
+        sync: false
+      - key: APP_ENV
+        value: production
+
+databases:
+  - name: taskflow-db
+    plan: free
+    databaseName: taskflow
+    user: taskflow
+
+# Redis is provisioned as a managed add-on.
+# Add a Redis instance named "taskflow-redis" from the Render dashboard
+# (New → Redis) and the envVar references above will resolve automatically.
