@@ -1,0 +1,195 @@
+###############################################################################
+# TaskFlow — Production Deployment (CD)
+#
+# Triggers:
+#   1. Automatically after a successful CI run on main/master
+#   2. Manually via workflow_dispatch (with optional image tag override)
+#
+# This workflow:
+#   1. Pulls the Docker image built by CI
+#   2. Runs a quick smoke test against it
+#   3. Triggers a Render deployment via deploy hook
+#   4. Verifies the deployment health
+###############################################################################
+
+name: CD — Deploy to Production
+
+on:
+  # Trigger after CI completes successfully
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: ["main", "master"]
+
+  # Manual trigger with optional inputs
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Docker image tag to deploy (default: latest)"
+        required: false
+        default: "latest"
+      skip_smoke_test:
+        description: "Skip smoke test before deploying"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+
+  # ── Gate: only proceed if CI passed ────────────────────────────────────────
+  gate:
+    name: "Deployment Gate"
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    outputs:
+      should-deploy: ${{ steps.check.outputs.deploy }}
+    steps:
+      - name: Check deployment conditions
+        id: check
+        run: |
+          echo "deploy=true" >> $GITHUB_OUTPUT
+          echo "## Deployment Gate Passed" >> $GITHUB_STEP_SUMMARY
+          echo "Trigger: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+
+  # ── Smoke test the Docker image ────────────────────────────────────────────
+  smoke-test:
+    name: "Pre-deploy Smoke Test"
+    runs-on: ubuntu-latest
+    needs: gate
+    if: >
+      needs.gate.outputs.should-deploy == 'true' &&
+      !(github.event_name == 'workflow_dispatch' && github.event.inputs.skip_smoke_test == 'true')
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Start stack with CI compose
+        run: |
+          docker compose -f docker-compose.ci.yml up -d --wait
+        env:
+          SECRET_KEY: cd-smoke-test-secret-key-32chars-long
+
+      - name: Wait for API health
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+              echo "API healthy"
+              break
+            fi
+            sleep 2
+          done
+
+      - name: Run smoke test
+        run: |
+          chmod +x scripts/smoke-test.sh
+          bash scripts/smoke-test.sh
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker-compose.ci.yml down -v
+
+  # ── Deploy to Render ───────────────────────────────────────────────────────
+  deploy:
+    name: "Deploy to Render"
+    runs-on: ubuntu-latest
+    needs: [gate, smoke-test]
+    if: always() && needs.gate.outputs.should-deploy == 'true' && (needs.smoke-test.result == 'success' || needs.smoke-test.result == 'skipped')
+    timeout-minutes: 10
+    environment: production
+
+    steps:
+      - name: Trigger Render deploy
+        run: |
+          if [ -z "${{ secrets.RENDER_DEPLOY_HOOK_URL }}" ]; then
+            echo "⚠️  RENDER_DEPLOY_HOOK_URL secret not configured."
+            echo "To enable auto-deploy:"
+            echo "  1. Go to Render Dashboard → your service → Settings → Deploy Hook"
+            echo "  2. Copy the hook URL"
+            echo "  3. Add it as RENDER_DEPLOY_HOOK_URL in GitHub repo Settings → Secrets"
+            echo ""
+            echo "## Deploy Skipped" >> $GITHUB_STEP_SUMMARY
+            echo "Configure \`RENDER_DEPLOY_HOOK_URL\` secret to enable." >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
+
+          echo "Triggering Render deployment..."
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${{ secrets.RENDER_DEPLOY_HOOK_URL }}")
+
+          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+            echo "✅ Render deploy hook returned HTTP $HTTP_CODE"
+          else
+            echo "❌ Render deploy hook returned HTTP $HTTP_CODE"
+            exit 1
+          fi
+
+      - name: Post-deploy summary
+        run: |
+          echo "## Production Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Commit** | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Branch** | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Actor** | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Time** | $(date -u +'%Y-%m-%d %H:%M:%S UTC') |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Status** | ✅ Triggered |" >> $GITHUB_STEP_SUMMARY
+
+  # ── Post-deploy health verification ────────────────────────────────────────
+  verify:
+    name: "Post-deploy Health Check"
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: needs.deploy.result == 'success'
+    timeout-minutes: 5
+
+    steps:
+      - name: Wait for Render deployment to complete
+        run: |
+          echo "Waiting 60 seconds for Render to pull and deploy..."
+          sleep 60
+
+      - name: Verify production health
+        run: |
+          if [ -z "${{ secrets.PRODUCTION_URL }}" ]; then
+            echo "⚠️  PRODUCTION_URL not set — skipping health verification."
+            echo "Set this secret to enable post-deploy health checks."
+            exit 0
+          fi
+
+          echo "Checking production health..."
+          HTTP_CODE=$(curl -s -o /tmp/health.json -w "%{http_code}" "${{ secrets.PRODUCTION_URL }}/health")
+
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "✅ Production is healthy!"
+            cat /tmp/health.json | python3 -m json.tool
+          else
+            echo "❌ Production health check failed (HTTP $HTTP_CODE)"
+            cat /tmp/health.json 2>/dev/null || true
+            exit 1
+          fi
+
+      - name: Health check summary
+        if: always()
+        run: |
+          echo "## Post-deploy Verification" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Health check endpoint: \`${{ secrets.PRODUCTION_URL }}/health\`" >> $GITHUB_STEP_SUMMARY

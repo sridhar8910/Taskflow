@@ -1,0 +1,58 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# TaskFlow — CI Integration Test Compose
+#
+# Lightweight stack for running smoke tests in CI.
+# Does NOT include worker/beat — only API + DB + Redis for HTTP testing.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: "no"
+    environment:
+      POSTGRES_USER: taskflow
+      POSTGRES_PASSWORD: taskflow
+      POSTGRES_DB: taskflow
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taskflow -d taskflow"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+
+  redis:
+    image: redis:7-alpine
+    restart: "no"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+
+  api:
+    build: .
+    restart: "no"
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://taskflow:taskflow@db:5432/taskflow
+      SYNC_DATABASE_URL: postgresql+psycopg2://taskflow:taskflow@db:5432/taskflow
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-ci-integration-test-secret-key-32chars-long}
+      ACCESS_TOKEN_EXPIRE_MINUTES: "60"
+      CACHE_TTL_SECONDS: "60"
+      APP_ENV: test
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 30s

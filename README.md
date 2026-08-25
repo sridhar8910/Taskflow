@@ -231,14 +231,87 @@ All environment variables (database URL, Redis URL, etc.) are wired automaticall
 
 ---
 
-## CI
+## CI/CD
 
-GitHub Actions workflow at `.github/workflows/ci.yml`.
+Complete CI/CD pipeline via GitHub Actions. Two workflows automate the full lifecycle from code push to production deployment.
 
-**Jobs:**
+### Pipeline architecture
 
-1. **lint** — `ruff check` + `ruff format --check`
-2. **test** — spins up `postgres:16` and `redis:7` as service containers, runs `alembic upgrade head`, then `pytest --cov`
+```
+Push to main/master
+       │
+       ▼
+┌──────────────────────────────────────────────────────────┐
+│                    CI Workflow (ci.yml)                   │
+│                                                          │
+│  ┌──────┐    ┌──────┐    ┌──────────┐                    │
+│  │ Lint │───▶│ Test │───▶│ Security │                    │
+│  └──────┘    └──────┘    └──────────┘                    │
+│                 │              │                          │
+│                 ▼              ▼                          │
+│              ┌────────────────────┐                       │
+│              │  Build & Push to   │                       │
+│              │  GitHub Container  │                       │
+│              │  Registry (GHCR)   │                       │
+│              └─────────┬──────────┘                       │
+│                        ▼                                  │
+│              ┌────────────────────┐                       │
+│              │ Integration Smoke  │                       │
+│              │ Test (full stack)  │                       │
+│              └─────────┬──────────┘                       │
+│                        ▼                                  │
+│              ┌────────────────────┐                       │
+│              │ Deploy to Render   │                       │
+│              │ (manual approval)  │                       │
+│              └────────────────────┘                       │
+└──────────────────────────────────────────────────────────┘
+       │
+       ▼
+┌──────────────────────────────────────────────────────────┐
+│                    CD Workflow (cd.yml)                   │
+│                                                          │
+│  Gate → Smoke Test → Deploy → Health Verification        │
+└──────────────────────────────────────────────────────────┘
+```
+
+### CI jobs (`.github/workflows/ci.yml`)
+
+| Job | Runs on | Purpose |
+|-----|---------|---------|
+| **lint** | Every push/PR | `ruff format --check` + `ruff check` |
+| **test** | After lint | Real PostgreSQL 16 + Redis 7, Alembic migrations, `pytest --cov` with 70% threshold |
+| **security** | After lint | `pip-audit` dependency CVE scan + `hadolint` Dockerfile lint |
+| **build** | After test+security, main only | Multi-stage Docker build → push to `ghcr.io` |
+| **integration** | After build, main only | `docker compose up` full stack + `scripts/smoke-test.sh` |
+| **deploy** | After integration, main only | Trigger Render deploy hook (requires `production` environment approval) |
+
+### CD workflow (`.github/workflows/cd.yml`)
+
+Triggers automatically after CI completes on main, or manually via `workflow_dispatch`:
+
+1. **Gate** — verify CI passed
+2. **Smoke test** — spin up full stack, run end-to-end API test
+3. **Deploy** — trigger Render deploy hook
+4. **Verify** — poll production `/health` endpoint
+
+### Required GitHub secrets
+
+| Secret | Purpose |
+|--------|---------|
+| `RENDER_DEPLOY_HOOK_URL` | Render service deploy hook URL (Settings → Deploy Hook) |
+| `PRODUCTION_URL` | Production base URL for post-deploy health checks (e.g. `https://taskflow-api.onrender.com`) |
+
+> **Note:** `GITHUB_TOKEN` is automatically provided — no manual setup needed for GHCR pushes.
+
+### Running smoke tests locally
+
+```bash
+# Start the full stack
+docker compose up -d --build
+
+# Run the smoke test suite
+bash scripts/smoke-test.sh http://localhost:8000
+```
 
 The test job uses real PostgreSQL and Redis (not mocks) so cache invalidation and DB constraints are exercised as they would be in production.
 
@@ -271,7 +344,7 @@ This is the honest version. The assignment says to be candid, so here it is.
 
 - **`EXPLAIN ANALYZE` on task list query.** The `list_tasks` query joins `tasks` to `projects` and applies up to 4 filters. I added indexes on `project_id`, `assignee_id`, and `due_date`, but I didn't profile the query plan against a realistic dataset. With more time I'd run `EXPLAIN ANALYZE` with 100k+ rows and tune accordingly.
 
-- **Integration tests in CI against Docker Compose stack.** CI currently uses GitHub Actions service containers (real PG + Redis). A further step would be a full `docker compose up` integration test that exercises the Celery worker end-to-end, including actual job execution and delivery.
+- **Integration tests in CI against Docker Compose stack.** ✅ Implemented — the CI pipeline includes a full `docker compose up` integration smoke test step that exercises the API end-to-end inside a containerized environment (see `docker-compose.ci.yml` and `scripts/smoke-test.sh`).
 
 **Assumptions documented:**
 
